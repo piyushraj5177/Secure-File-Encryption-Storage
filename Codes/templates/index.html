@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Secure File Storage</title>
+
+<style>
+body{
+    font-family: Arial;
+    background: linear-gradient(to right,#2c4a7a,#4a6fa5);
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    height:100vh;
+    margin:0;
+}
+
+.card{
+    background:white;
+    padding:30px;
+    width:380px;
+    border-radius:12px;
+    text-align:center;
+}
+
+input,button{
+    width:90%;
+    padding:10px;
+    margin:6px;
+    border-radius:6px;
+    border:1px solid #ccc;
+}
+
+button{
+    background:#2c4a7a;
+    color:white;
+    border:none;
+    cursor:pointer;
+}
+
+.link{
+    color:#2c4a7a;
+    cursor:pointer;
+    font-size:14px;
+}
+
+.file{
+    background:#f2f2f2;
+    padding:10px;
+    margin-top:10px;
+    border-radius:8px;
+}
+
+.loading{
+    display:none;
+    color:#2c4a7a;
+}
+</style>
+
+<script>
+// -------- PAGE SWITCH --------
+function showLogin(){
+    login.style.display="block";
+    register.style.display="none";
+    forgot.style.display="none";
+}
+
+function showRegister(){
+    login.style.display="none";
+    register.style.display="block";
+    forgot.style.display="none";
+}
+
+function showForgot(){
+    login.style.display="none";
+    register.style.display="none";
+    forgot.style.display="block";
+}
+
+// -------- FILE ICON --------
+function getIcon(file){
+    if(file.endsWith(".pdf")) return "📄";
+    if(file.endsWith(".docx")) return "📝";
+    return "📁";
+}
+
+// -------- FILE SYSTEM --------
+let unlocked = {};
+
+function loadFiles(){
+    document.getElementById("loading").style.display="block";
+
+    fetch('/get_files')
+    .then(res=>res.json())
+    .then(data=>{
+        let html="";
+        document.getElementById("count").innerText=data.length;
+
+        data.forEach(f=>{
+            html+=`
+            <div class="file">
+                <b>${getIcon(f)} ${f}</b><br><br>
+
+                <button onclick="toggle('${f}',this)">Encrypted</button>
+                <button onclick="downloadFile('${f}')">Download</button>
+                <a href="/delete/${f}" style="color:red;">Delete</a>
+            </div>`;
+        });
+
+        document.getElementById("files").innerHTML=html;
+        document.getElementById("loading").style.display="none";
+    });
+}
+
+function toggle(file,btn){
+    let pass = prompt("Enter your login password");
+
+    fetch('/verify_password',{
+        method:"POST",
+        headers:{"Content-Type":"application/x-www-form-urlencoded"},
+        body:`password=${pass}`
+    })
+    .then(res=>{
+        if(res.status==200){
+            unlocked[file]=!unlocked[file];
+
+            if(unlocked[file]){
+                btn.innerText="Decrypted";
+                btn.style.background="green";
+            }else{
+                btn.innerText="Encrypted";
+                btn.style.background="#2c4a7a";
+            }
+        }else{
+            alert("Wrong password!");
+        }
+    });
+}
+
+function downloadFile(file){
+    if(unlocked[file]){
+        window.location=`/download/decrypted/${file}`;
+    }else{
+        window.location=`/download/encrypted/${file}`;
+    }
+}
+
+// -------- USERS --------
+function toggleUsers(){
+    let box=document.getElementById("users");
+
+    if(box.style.display==="none"){
+        box.style.display="block";
+
+        fetch('/get_users')
+        .then(res=>res.json())
+        .then(data=>{
+            let html="";
+            data.forEach(u=>{
+                html+=`
+                <div>
+                    ${u}
+                    <button onclick="deleteUser('${u}')">Delete</button>
+                </div>`;
+            });
+            box.innerHTML=html;
+        });
+
+    }else{
+        box.style.display="none";
+    }
+}
+
+function deleteUser(user){
+    let pass=prompt("Enter password to delete user");
+
+    fetch('/delete_user',{
+        method:"POST",
+        headers:{"Content-Type":"application/x-www-form-urlencoded"},
+        body:`username=${user}&password=${pass}`
+    })
+    .then(res=>{
+        if(res.status==200){
+            alert("User deleted");
+            toggleUsers();
+            toggleUsers();
+        }else{
+            alert("Wrong password!");
+        }
+    });
+}
+
+window.onload=showLogin;
+</script>
+
+</head>
+
+<body>
+
+<div class="card">
+
+{% if error %}<p style="color:red">{{error}}</p>{% endif %}
+{% if success %}<p style="color:green">{{success}}</p>{% endif %}
+
+{% if dashboard %}
+
+<h3>Welcome {{session['user']}}</h3>
+
+<p>Total Files: <b id="count">0</b></p>
+
+<form action="/upload" method="POST" enctype="multipart/form-data">
+<input type="file" name="file" required>
+<button>Upload File</button>
+</form>
+
+<button onclick="loadFiles()">Show My Files</button>
+
+<p class="loading" id="loading">Loading...</p>
+
+<div id="files"></div>
+
+<br>
+<a href="/logout">Logout</a>
+
+{% else %}
+
+<!-- LOGIN -->
+<div id="login">
+<h3>Login</h3>
+
+<form action="/login" method="POST">
+<input name="username" placeholder="Username" required>
+<input name="password" type="password" placeholder="Password" required>
+<button>Login</button>
+</form>
+
+<p class="link" onclick="showForgot()">Forgot Password?</p>
+
+<p>
+Don't have an account?
+<span class="link" onclick="showRegister()">Create Account</span>
+</p>
+
+<hr>
+
+<h4 class="link" onclick="toggleUsers()">Show Registered Users</h4>
+<div id="users" style="display:none;"></div>
+
+</div>
+
+<!-- REGISTER -->
+<div id="register" style="display:none;">
+<h3>Create Account</h3>
+
+<form action="/register" method="POST">
+<input name="username" placeholder="Username" required>
+<input name="password" type="password" placeholder="Password" required>
+<input name="mobile" placeholder="Mobile Number" required>
+<input name="dob" type="date" required>
+<button>Create Account</button>
+</form>
+
+<p class="link" onclick="showLogin()">Back to Login</p>
+</div>
+
+<!-- FORGOT -->
+<div id="forgot" style="display:none;">
+<h3>Reset Password</h3>
+
+<form action="/reset_password" method="POST">
+<input name="username" placeholder="Username" required>
+<input name="mobile" placeholder="Mobile Number" required>
+<input name="dob" type="date" required>
+<input name="new_password" type="password" placeholder="New Password" required>
+<button>Reset Password</button>
+</form>
+
+<p class="link" onclick="showLogin()">Back to Login</p>
+</div>
+
+{% endif %}
+
+</div>
+
+</body>
+</html>
